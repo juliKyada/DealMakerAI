@@ -1,18 +1,20 @@
 FROM python:3.11
 
-# Set working directory
+# Set the working directory
 WORKDIR /app
 
-# Copy all files
+# Install system dependencies
+RUN apt-get update && apt-get install -y gcc
+
+# Copy project files
 COPY . .
 
-# Install system dependencies including distutils
-RUN apt-get update && \
-    apt-get install -y python3-distutils build-essential && \
-    pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies
+RUN pip install --upgrade pip
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Expose the port Flask uses
+# Expose port 5000 for Flask
 EXPOSE 5000
 
-# Start your Flask app
+# Run the app
 CMD ["python", "app.py"]

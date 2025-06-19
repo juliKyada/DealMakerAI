@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Amazon Price Tracker Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .dashboard-card {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .price-card {
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            color: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-bottom: 20px;
+        }
+        .product-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .product-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+        }
+        .product-item:hover {
+            background-color: #f8f9fa;
+        }
+        .product-item.active {
+            background-color: #e9ecef;
+        }
+        .price-trend-image {
+            max-width: 100%;
+            height: auto;
+            margin-top: 20px;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        .error-message {
+            color: #dc3545;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            background-color: #f8d7da;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #6c757d;
+        }
+        .empty-state i {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-chart-line me-2"></i>
+                Amazon Price Tracker
+            </a>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <!-- Add Product Form -->
+            <div class="col-md-4">
+                <div class="dashboard-card">
+                    <h5><i class="fas fa-plus-circle me-2"></i>Add New Product</h5>
+                    <form id="addProductForm" class="mt-3">
+                        <div class="mb-3">
+                            <input type="url" class="form-control" id="productUrl" 
+                                   placeholder="Enter Amazon Product URL" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="fas fa-plus me-2"></i>Add Product
+                        </button>
+                    </form>
+                    <div id="errorMessage" class="error-message" style="display: none;"></div>
+                </div>
+
+                <!-- Product List -->
+                <div class="dashboard-card">
+                    <h5><i class="fas fa-list me-2"></i>Tracked Products</h5>
+                    <div class="product-list" id="productList">
+                        <!-- Products will be listed here -->
+                    </div>
+                    <button id="refreshButton" class="btn btn-outline-primary w-100 mt-3">
+                        <i class="fas fa-sync-alt me-2"></i>Refresh All Products
+                    </button>
+                </div>
+            </div>
+
+            <!-- Price Information -->
+            <div class="col-md-8">
+                <div id="loading" class="loading">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+
+                <div id="emptyState" class="empty-state">
+                    <i class="fas fa-chart-line"></i>
+                    <h4>No Products Tracked</h4>
+                    <p>Add an Amazon product URL to start tracking its price.</p>
+                </div>
+
+                <div id="productDetails" style="display: none;">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="price-card">
+                                <h6>Current Price</h6>
+                                <h3 id="currentPrice">--</h3>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="price-card">
+                                <h6>Average Price</h6>
+                                <h3 id="avgPrice">--</h3>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="price-card">
+                                <h6>Price Change</h6>
+                                <h3 id="priceChange">--</h3>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Price Chart -->
+                    <div class="dashboard-card">
+                        <h5><i class="fas fa-chart-line me-2"></i>Price History</h5>
+                        <div class="chart-container">
+                            <canvas id="priceChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Price Predictions -->
+                    <div class="dashboard-card">
+                        <h5><i class="fas fa-crystal-ball me-2"></i>Price Predictions</h5>
+                        <div class="chart-container">
+                            <canvas id="predictionChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Price Trend Image -->
+                    <div class="dashboard-card">
+                        <h5><i class="fas fa-chart-area me-2"></i>Price Trend Analysis</h5>
+                        <img id="priceTrendImage" class="price-trend-image" src="" alt="Price Trend">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let priceChart = null;
+        let predictionChart = null;
+        let selectedProduct = null;
+
+        // Initialize charts
+        function initCharts() {
+            const priceCtx = document.getElementById('priceChart').getContext('2d');
+            const predictionCtx = document.getElementById('predictionChart').getContext('2d');
+
+            priceChart = new Chart(priceCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Price History',
+                        data: [],
+                        borderColor: '#4f46e5',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: false
+                        }
+                    }
+                }
+            });
+
+            predictionChart = new Chart(predictionCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Price Predictions',
+                        data: [],
+                        borderColor: '#10b981',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: false
+                        }
+                    }
+                }
+            });
+        }
+
+        // Update product list
+        function updateProductList() {
+            document.getElementById('loading').style.display = 'block';
+            fetch('/get_all_products')
+                .then(response => response.json())
+                .then(products => {
+                    const productList = document.getElementById('productList');
+                    const emptyState = document.getElementById('emptyState');
+                    const productDetails = document.getElementById('productDetails');
+                    
+                    productList.innerHTML = '';
+                    
+                    if (products.length === 0) {
+                        emptyState.style.display = 'block';
+                        productDetails.style.display = 'none';
+                    } else {
+                        emptyState.style.display = 'none';
+                        products.forEach(product => {
+                            const div = document.createElement('div');
+                            div.className = 'product-item d-flex justify-content-between align-items-center';
+                            div.innerHTML = `
+                                <span style="flex:1;cursor:pointer;" onclick="loadProductData('${product.id}')">${product.name}</span>
+                                <span class="text-muted">$${product.current_price}</span>
+                                <button class="btn btn-sm btn-outline-secondary ms-2 refresh-product-btn" data-product-id="${product.id}"><i class="fas fa-sync-alt"></i></button>
+                            `;
+                            productList.appendChild(div);
+                        });
+                        // Attach event listeners for refresh buttons
+                        document.querySelectorAll('.refresh-product-btn').forEach(btn => {
+                            btn.addEventListener('click', function(e) {
+                                e.stopPropagation();
+                                const productId = this.getAttribute('data-product-id');
+                                refreshSingleProduct(productId);
+                            });
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching products:', error);
+                    showError('Failed to load products. Please try again.');
+                })
+                .finally(() => {
+                    document.getElementById('loading').style.display = 'none';
+                });
+        }
+
+        // Load product data
+        function loadProductData(productId) {
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('productDetails').style.display = 'none';
+
+            fetch(`/get_price_data/${productId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+
+                    document.getElementById('currentPrice').textContent = `$${data.current_price.toFixed(2)}`;
+                    document.getElementById('avgPrice').textContent = `$${data.avg_price.toFixed(2)}`;
+                    
+                    // Calculate price change
+                    const priceChange = ((data.current_price - data.avg_price) / data.avg_price * 100).toFixed(2);
+                    document.getElementById('priceChange').textContent = `${priceChange}%`;
+                    document.getElementById('priceChange').style.color = priceChange >= 0 ? '#dc3545' : '#28a745';
+
+                    // Update price history chart
+                    updatePriceChart(data.history);
+                    
+                    // Update predictions chart
+                    updatePredictionChart(data.predictions);
+
+                    document.getElementById('productDetails').style.display = 'block';
+                })
+                .catch(error => {
+                    console.error('Error loading product data:', error);
+                    showError('Failed to load product data. Please try again.');
+                })
+                .finally(() => {
+                    document.getElementById('loading').style.display = 'none';
+                });
+        }
+
+        // Update price history chart
+        function updatePriceChart(history) {
+            const dates = history.dates.map(date => new Date(date).toLocaleDateString());
+            const prices = history.prices;
+
+            priceChart.data.labels = dates;
+            priceChart.data.datasets[0].data = prices;
+            priceChart.update();
+        }
+
+        // Update predictions chart
+        function updatePredictionChart(predictions) {
+            const dates = predictions.map(p => new Date(p[0]).toLocaleDateString());
+            const prices = predictions.map(p => p[1]);
+
+            predictionChart.data.labels = dates;
+            predictionChart.data.datasets[0].data = prices;
+            predictionChart.update();
+        }
+
+        // Show error message
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            setTimeout(() => {
+                errorDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        // Add product form submission
+        document.getElementById('addProductForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const url = document.getElementById('productUrl').value;
+            document.getElementById('loading').style.display = 'block';
+            
+            fetch('/add_product', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ url: url })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'error') {
+                    throw new Error(data.message);
+                }
+                document.getElementById('productUrl').value = '';
+                updateProductList();
+                if (data.product) {
+                    loadProductData(data.product.id);
+                }
+            })
+            .catch(error => {
+                console.error('Error adding product:', error);
+                showError(error.message || 'Failed to add product. Please try again.');
+            })
+            .finally(() => {
+                document.getElementById('loading').style.display = 'none';
+            });
+        });
+
+        // Refresh a single product
+        function refreshSingleProduct(productId) {
+            document.getElementById('loading').style.display = 'block';
+            fetch(`/refresh_product/${productId}`, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        updateProductList();
+                        loadProductData(productId);
+                    } else {
+                        showError(data.message || 'Failed to refresh product.');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error refreshing product:', error);
+                    showError('Failed to refresh product.');
+                })
+                .finally(() => {
+                    document.getElementById('loading').style.display = 'none';
+                });
+        }
+
+        // Refresh all products
+        document.getElementById('refreshButton').addEventListener('click', function() {
+            document.getElementById('loading').style.display = 'block';
+            fetch('/refresh_all_products', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        updateProductList();
+                        if (selectedProduct) {
+                            loadProductData(selectedProduct);
+                        }
+                    } else {
+                        showError(data.message || 'Failed to refresh all products.');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error refreshing all products:', error);
+                    showError('Failed to refresh all products.');
+                })
+                .finally(() => {
+                    document.getElementById('loading').style.display = 'none';
+                });
+        });
+
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', function() {
+            initCharts();
+            updateProductList();
+        });
+    </script>
+</body>
+</html>

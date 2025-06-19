@@ -7,3 +7,5 @@ seaborn
 fake-useragent==0.1.11
 scikit-learn
 numpy
+werkzeug
+

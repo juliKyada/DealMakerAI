@@ -1,1 +1,69 @@
+DealMakerAI
+An AI-powered chatbot designed to negotiate prices and facilitate deals in an e-commerce or B2B context. This project leverages natural language processing and machine learning models to simulate a negotiation process, providing a conversational and engaging user experience.
 
+Key Features
+Price Negotiation Engine: The core of the application, which intelligently adjusts offers based on user input and predefined negotiation strategies.
+
+Natural Language Understanding (NLU): The chatbot can understand user intents, recognize key entities (like prices and product names), and respond contextually.
+
+Dynamic Product Integration: The system can be integrated with external data sources (like product_data.json or a web scraper) to provide real-time information for negotiations.
+
+Conversational Interface: A user-friendly chat interface for seamless interaction.
+
+Project Structure
+app.py: The main Flask application file that handles routing, chatbot logic, and API interactions.
+
+amazon_scraper.py: A script to scrape product data from Amazon, used to populate the initial product information.
+
+product_data.json: A static file containing example product data for the negotiation bot to use.
+
+requirements.txt: Lists all the necessary Python dependencies for the project.
+
+static/: Contains static files such as CSS, JavaScript, and images for the frontend.
+
+templates/: Houses the HTML templates for the web application, including the main chat interface.
+
+Getting Started
+Prerequisites
+To run this project, you will need Python 3.x installed on your system.
+
+Installation
+Clone the repository:
+
+git clone [https://github.com/juliKyada/DealMakerAI.git](https://github.com/juliKyada/DealMakerAI.git)
+cd DealMakerAI
+
+Create a virtual environment (recommended):
+
+python -m venv venv
+source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
+
+Install the required packages:
+
+pip install -r requirements.txt
+
+Usage
+Run the application:
+
+python app.py
+
+Open in your browser:
+Navigate to http://127.0.0.1:5000 in your web browser to start interacting with the DealMakerAI chatbot.
+
+Contributing
+We welcome contributions! If you would like to contribute, please follow these steps:
+
+Fork the repository.
+
+Create a new branch (git checkout -b feature/your-feature-name).
+
+Make your changes.
+
+Commit your changes (git commit -m 'Add new feature').
+
+Push to the branch (git push origin feature/your-feature-name).
+
+Open a Pull Request.
+
+License
+This project is licensed under the MIT License. See the LICENSE file for details.

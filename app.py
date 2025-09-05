@@ -84,6 +84,48 @@ def get_price_history(product_id):
         logger.error(f"Error getting price history: {e}")
         return {'dates': [], 'prices': []}
 
+# -------------------- NEW: NEGOTIATION LOGIC --------------------
+def negotiate_price(product_id, offer):
+    if product_id not in product_data:
+        return {"response": "❌ Sorry, product not found."}
+
+    product = product_data[product_id]
+    price = float(product["current_price"])
+    min_price = float(product["min_price"]) if "min_price" in product else price * 0.85  # fallback 15% discount
+
+    if offer >= price:
+        return {"response": f"✅ Great! The {product['name']} is yours for ₹{price}"}
+
+    if offer >= price * 0.9:  # 90%+
+        return {"response": f"🎉 Deal! I can give you the {product['name']} for ₹{offer}"}
+
+    if offer >= price * 0.7:  # 70–90%
+        counter = max((offer + price) // 2, min_price)
+        return {"response": f"🤝 Hmm, I can’t do ₹{offer}, but how about ₹{counter}?"}
+
+    if offer < price * 0.7:  # Too low
+        return {"response": f"😅 That’s too low. Best I can do is ₹{min_price}"}
+
+    return {"response": "Let's discuss further!"}
+
+@app.route("/chat", methods=["POST"])
+def chat():
+    try:
+        data = request.json
+        product_id = data.get("product_id")
+        offer = data.get("offer")
+
+        if not product_id or offer is None:
+            return jsonify({"response": "❌ Missing product_id or offer"}), 400
+
+        result = negotiate_price(product_id, float(offer))
+        return jsonify(result)
+
+    except Exception as e:
+        logger.error(f"Error in chat: {e}")
+        return jsonify({"response": "⚠️ Something went wrong"}), 500
+# ----------------------------------------------------------------
+
 @app.route('/')
 def index():
     return render_template('index.html', products=product_data)

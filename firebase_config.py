@@ -16,7 +16,7 @@ class FirebaseService:
     
     def __init__(self):
         self.db = None
-        self.realtime_db = None
+        self.db_realtime = None
         self.initialized = False
         
     def initialize(self, config_path=None):
@@ -25,7 +25,7 @@ class FirebaseService:
             # Check if Firebase is already initialized
             if firebase_admin._apps:
                 logger.info("Firebase already initialized")
-                self.db = firestore.client()
+                self.db_realtime = firebase_db.reference()
                 self.initialized = True
                 return True
             
@@ -45,7 +45,7 @@ class FirebaseService:
                 cred = credentials.Certificate(firebase_config)
                 firebase_admin.initialize_app(cred)
             
-            self.db = firestore.client()
+            self.db_realtime = firebase_db.reference()
             self.initialized = True
             logger.info("Firebase initialized successfully")
             return True
@@ -83,19 +83,20 @@ class FirebaseService:
         return config if config else None
     
     def save_product_data(self, product_id, product_data):
-        """Save product data to Firebase"""
+        """Save product data to Firebase Real-time Database"""
         if not self.initialized:
             logger.error("Firebase not initialized")
             return False
         
         try:
-            doc_ref = self.db.collection('products').document(product_id)
-            doc_ref.set({
+            # Save to Real-time Database
+            product_ref = self.db_realtime.child('products').child(product_id)
+            product_ref.set({
                 **product_data,
-                'last_updated': datetime.utcnow(),
+                'last_updated': datetime.utcnow().isoformat(),
                 'firebase_sync': True
             })
-            logger.info(f"Product {product_id} saved to Firebase")
+            logger.info(f"Product {product_id} saved to Firebase Real-time Database")
             return True
         except Exception as e:
             logger.error(f"Failed to save product {product_id} to Firebase: {e}")
@@ -201,27 +202,160 @@ class FirebaseService:
             logger.error(f"Failed to sync data to Firebase: {e}")
             return False
     
-    def setup_realtime_listeners(self, callback_function):
-        """Setup real-time listeners for price updates"""
+    def save_user_input(self, user_id, input_type, input_data):
+        """Save user input data (URLs, offers, negotiations) to Firebase"""
         if not self.initialized:
             logger.error("Firebase not initialized")
             return False
         
         try:
-            # Listen for changes in price_history collection
-            def on_snapshot(col_snapshot, changes, read_time):
-                for change in changes:
-                    if change.type.name == 'ADDED':
-                        data = change.document.to_dict()
-                        callback_function(data)
-            
-            # Start listening to price_history collection
-            self.db.collection('price_history').on_snapshot(on_snapshot)
-            logger.info("Real-time listeners setup successfully")
+            input_ref = self.db_realtime.child('user_inputs').child(str(user_id)).child(input_type).push()
+            input_ref.set({
+                **input_data,
+                'timestamp': datetime.utcnow().isoformat(),
+                'user_id': str(user_id)
+            })
+            logger.info(f"User input saved for user {user_id}, type: {input_type}")
             return True
         except Exception as e:
-            logger.error(f"Failed to setup real-time listeners: {e}")
+            logger.error(f"Failed to save user input: {e}")
             return False
+    
+    def save_negotiation(self, user_id, product_id, negotiation_data):
+        """Save negotiation data to Firebase"""
+        if not self.initialized:
+            logger.error("Firebase not initialized")
+            return False
+        
+        try:
+            negotiation_ref = self.db_realtime.child('negotiations').push()
+            negotiation_ref.set({
+                **negotiation_data,
+                'user_id': str(user_id),
+                'product_id': product_id,
+                'timestamp': datetime.utcnow().isoformat()
+            })
+            logger.info(f"Negotiation saved for user {user_id}, product {product_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save negotiation: {e}")
+            return False
+    
+    def save_price_history(self, product_id, price_data):
+        """Save detailed price history to Firebase"""
+        if not self.initialized:
+            logger.error("Firebase not initialized")
+            return False
+        
+        try:
+            price_ref = self.db_realtime.child('price_history').child(product_id).push()
+            price_ref.set({
+                **price_data,
+                'product_id': product_id,
+                'timestamp': datetime.utcnow().isoformat()
+            })
+            logger.info(f"Price history saved for product {product_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save price history: {e}")
+            return False
+    
+    def save_user_activity(self, user_id, activity_type, activity_data):
+        """Save user activity and interactions to Firebase"""
+        if not self.initialized:
+            logger.error("Firebase not initialized")
+            return False
+        
+        try:
+            activity_ref = self.db_realtime.child('user_activities').child(str(user_id)).push()
+            activity_ref.set({
+                **activity_data,
+                'activity_type': activity_type,
+                'user_id': str(user_id),
+                'timestamp': datetime.utcnow().isoformat()
+            })
+            logger.info(f"User activity saved for user {user_id}, type: {activity_type}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save user activity: {e}")
+            return False
+    
+    def save_product_metadata(self, product_id, metadata):
+        """Save product metadata (images, descriptions, categories) to Firebase"""
+        if not self.initialized:
+            logger.error("Firebase not initialized")
+            return False
+        
+        try:
+            metadata_ref = self.db_realtime.child('product_metadata').child(product_id)
+            metadata_ref.set({
+                **metadata,
+                'product_id': product_id,
+                'last_updated': datetime.utcnow().isoformat()
+            })
+            logger.info(f"Product metadata saved for product {product_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save product metadata: {e}")
+            return False
+    
+    def get_user_data(self, user_id):
+        """Get all user-related data from Firebase"""
+        if not self.initialized:
+            logger.error("Firebase not initialized")
+            return None
+        
+        try:
+            user_data = {}
+            
+            # Get user inputs
+            inputs = self.db_realtime.child('user_inputs').child(str(user_id)).get()
+            if inputs:
+                user_data['inputs'] = inputs
+            
+            # Get user activities
+            activities = self.db_realtime.child('user_activities').child(str(user_id)).get()
+            if activities:
+                user_data['activities'] = activities
+            
+            # Get user negotiations
+            negotiations = self.db_realtime.child('negotiations').order_by_child('user_id').equal_to(str(user_id)).get()
+            if negotiations:
+                user_data['negotiations'] = negotiations
+            
+            return user_data
+        except Exception as e:
+            logger.error(f"Failed to get user data: {e}")
+            return None
+    
+    def get_product_analytics(self, product_id):
+        """Get comprehensive product analytics from Firebase"""
+        if not self.initialized:
+            logger.error("Firebase not initialized")
+            return None
+        
+        try:
+            analytics = {}
+            
+            # Get price history
+            price_history = self.db_realtime.child('price_history').child(product_id).get()
+            if price_history:
+                analytics['price_history'] = price_history
+            
+            # Get negotiations for this product
+            negotiations = self.db_realtime.child('negotiations').order_by_child('product_id').equal_to(product_id).get()
+            if negotiations:
+                analytics['negotiations'] = negotiations
+            
+            # Get product metadata
+            metadata = self.db_realtime.child('product_metadata').child(product_id).get()
+            if metadata:
+                analytics['metadata'] = metadata
+            
+            return analytics
+        except Exception as e:
+            logger.error(f"Failed to get product analytics: {e}")
+            return None
 
 # Global Firebase service instance
 firebase_service = FirebaseService()

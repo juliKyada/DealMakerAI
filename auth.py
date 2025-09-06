@@ -10,15 +10,53 @@ from datetime import datetime, timedelta
 
 # Firebase imports
 import firebase_admin
-from firebase_admin import credentials, firestore, auth as firebase_auth
+from firebase_admin import credentials, db as firebase_db, auth as firebase_auth
 
 # Initialize Firebase app (only once)
 if not firebase_admin._apps:
-    cred = credentials.Certificate("firebase_config.json")  # your Firebase service account key
-    firebase_admin.initialize_app(cred)
+    try:
+        # Try to load from environment variables first
+        import os
+        firebase_config = {
+            "type": "service_account",
+            "project_id": os.getenv('FIREBASE_PROJECT_ID'),
+            "private_key_id": os.getenv('FIREBASE_PRIVATE_KEY_ID', ''),
+            "private_key": os.getenv('FIREBASE_PRIVATE_KEY', '').replace('\\n', '\n'),
+            "client_email": os.getenv('FIREBASE_CLIENT_EMAIL'),
+            "client_id": os.getenv('FIREBASE_CLIENT_ID', ''),
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{os.getenv('FIREBASE_CLIENT_EMAIL')}"
+        }
+        
+        if firebase_config.get('project_id') and firebase_config.get('private_key') and firebase_config.get('client_email'):
+            cred = credentials.Certificate(firebase_config)
+            firebase_admin.initialize_app(cred, {
+                'databaseURL': os.getenv('FIREBASE_DATABASE_URL', f"https://{firebase_config['project_id']}-default-rtdb.firebaseio.com/")
+            })
+            print("✅ Firebase initialized with environment variables")
+        else:
+            # Try to load from file
+            import json
+            with open("firebase_config.json", 'r') as f:
+                firebase_config = json.load(f)
+            cred = credentials.Certificate(firebase_config)
+            firebase_admin.initialize_app(cred, {
+                'databaseURL': firebase_config.get('databaseURL', f"https://{firebase_config['project_id']}-default-rtdb.firebaseio.com/")
+            })
+            print("✅ Firebase initialized with config file")
+    except Exception as e:
+        print(f"⚠️ Firebase initialization failed: {e}")
+        print("⚠️ User data will only be saved to local database")
 
-# Firestore client
-db_firestore = firestore.client()
+# Firebase Real-time Database reference
+try:
+    db_realtime = firebase_db.reference()
+    print("✅ Firebase Real-time Database connected")
+except Exception as e:
+    print(f"⚠️ Firebase Real-time Database connection failed: {e}")
+    db_realtime = None
 
 # Initialize extensions
 db = SQLAlchemy()
@@ -128,13 +166,28 @@ DealMaker AI Team
 
 # ---------- Firebase Helper ----------
 def save_user_to_firebase(user, plain_password=None):
-    """Save user info to Firebase Firestore and Auth"""
+    """Save user info to Firebase Real-time Database and Auth"""
     try:
-        # Save to Firestore
-        db_firestore.collection("users").document(str(user.id)).set({
+        if db_realtime is None:
+            print("⚠️ Firebase Real-time Database not available")
+            return False
+            
+        # Save to Firebase Real-time Database
+        user_data = {
             "username": user.username,
             "email": user.email,
-            "created_at": firestore.SERVER_TIMESTAMP
+            "created_at": datetime.utcnow().isoformat(),
+            "is_active": user.is_active,
+            "email_verified": user.email_verified
+        }
+        
+        # Save to users node with user ID as key
+        db_realtime.child('users').child(str(user.id)).set(user_data)
+        
+        # Also save by email for easy lookup
+        db_realtime.child('users_by_email').child(user.email.replace('.', '_').replace('@', '_')).set({
+            "user_id": str(user.id),
+            "username": user.username
         })
 
         # Optionally also create Firebase Auth user
@@ -143,14 +196,18 @@ def save_user_to_firebase(user, plain_password=None):
                 firebase_auth.create_user(
                     email=user.email,
                     password=plain_password,
-                    display_name=user.username
+                    display_name=user.username,
+                    uid=str(user.id)  # Use local user ID as Firebase UID
                 )
+                print("✅ Firebase Auth user created")
             except Exception as e:
-                print(f"⚠ Firebase Auth error: {e}")
+                print(f"⚠️ Firebase Auth error: {e}")
 
-        print("✅ User saved to Firebase")
+        print("✅ User saved to Firebase Real-time Database")
+        return True
     except Exception as e:
-        print(f"⚠ Error saving user to Firebase: {e}")
+        print(f"⚠️ Error saving user to Firebase: {e}")
+        return False
 
 
 def register_auth_routes(app):
@@ -234,8 +291,10 @@ def register_auth_routes(app):
                 db.session.add(user)
                 db.session.commit()
 
-                # Save to Firebase too
-                save_user_to_firebase(user, plain_password=password)
+                # Save to Firebase too (non-blocking)
+                firebase_success = save_user_to_firebase(user, plain_password=password)
+                if not firebase_success:
+                    print("⚠️ User created locally but Firebase sync failed")
                 
                 if request.is_json:
                     return jsonify({'status': 'success', 'message': 'Account created successfully'})

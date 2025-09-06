@@ -133,6 +133,35 @@ def chat():
             return jsonify({"response": "❌ Missing product_id or offer"}), 400
 
         result = negotiate_price(product_id, float(offer))
+        
+        # Store negotiation data in Firebase
+        if firebase_initialized:
+            firebase_service = get_firebase_service()
+            
+            # Save negotiation
+            firebase_service.save_negotiation(current_user.id, product_id, {
+                'user_offer': float(offer),
+                'ai_response': result.get('response', ''),
+                'product_name': product_data.get(product_id, {}).get('name', 'Unknown'),
+                'current_price': product_data.get(product_id, {}).get('current_price', 0),
+                'negotiation_type': 'price_negotiation'
+            })
+            
+            # Save user input
+            firebase_service.save_user_input(current_user.id, 'negotiation_offer', {
+                'product_id': product_id,
+                'offer_amount': float(offer),
+                'product_name': product_data.get(product_id, {}).get('name', 'Unknown')
+            })
+            
+            # Save user activity
+            firebase_service.save_user_activity(current_user.id, 'negotiation_attempt', {
+                'product_id': product_id,
+                'offer_amount': float(offer),
+                'ai_response': result.get('response', ''),
+                'success': '✅' in result.get('response', '')
+            })
+        
         return jsonify(result)
 
     except Exception as e:
@@ -192,10 +221,43 @@ def add_product():
         # Save data to file
         save_data()
         
-        # Sync to Firebase if available
+        # Store comprehensive data in Firebase
         if firebase_initialized:
             firebase_service = get_firebase_service()
+            
+            # Save product data
             firebase_service.save_product_data(product_id, product_data[product_id])
+            
+            # Save user input (URL submission)
+            firebase_service.save_user_input(current_user.id, 'product_url', {
+                'url': url,
+                'product_id': product_id,
+                'product_name': product_name
+            })
+            
+            # Save user activity
+            firebase_service.save_user_activity(current_user.id, 'product_added', {
+                'product_id': product_id,
+                'product_name': product_name,
+                'url': url,
+                'initial_price': current_price
+            })
+            
+            # Save price history
+            firebase_service.save_price_history(product_id, {
+                'price': current_price,
+                'price_type': 'initial',
+                'source': 'user_added'
+            })
+            
+            # Save product metadata
+            firebase_service.save_product_metadata(product_id, {
+                'name': product_name,
+                'url': url,
+                'category': 'amazon_product',
+                'added_by_user': current_user.id,
+                'added_at': datetime.now().isoformat()
+            })
         
         return jsonify({
             'status': 'success', 
@@ -281,10 +343,31 @@ def refresh_product(product_id):
         })
         save_data()
         
-        # Sync price update to Firebase
+        # Store comprehensive price update data in Firebase
         if firebase_initialized:
             firebase_service = get_firebase_service()
+            
+            # Save price update
             firebase_service.save_price_update(product_id, {'price': current_price})
+            
+            # Save detailed price history
+            firebase_service.save_price_history(product_id, {
+                'price': current_price,
+                'price_type': 'refresh',
+                'source': 'manual_refresh',
+                'previous_price': product_data[product_id].get('current_price', 0),
+                'price_change': current_price - float(product_data[product_id].get('current_price', 0)),
+                'price_change_percent': ((current_price - float(product_data[product_id].get('current_price', 0))) / float(product_data[product_id].get('current_price', 1))) * 100
+            })
+            
+            # Save user activity
+            firebase_service.save_user_activity(current_user.id, 'price_refresh', {
+                'product_id': product_id,
+                'product_name': product_name,
+                'old_price': product_data[product_id].get('current_price', 0),
+                'new_price': current_price,
+                'price_change': current_price - float(product_data[product_id].get('current_price', 0))
+            })
         return jsonify({'status': 'success', 'product': {
             'id': product_id,
             'name': product_name,
@@ -383,6 +466,97 @@ def sync_to_firebase():
             return jsonify({'status': 'error', 'message': 'Failed to sync data to Firebase'}), 500
     except Exception as e:
         logger.error(f"Error syncing to Firebase: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/get_user_data')
+@login_required
+def get_user_data():
+    """Get all user-related data from Firebase"""
+    try:
+        if not firebase_initialized:
+            return jsonify({'error': 'Firebase not initialized'}), 500
+        
+        firebase_service = get_firebase_service()
+        user_data = firebase_service.get_user_data(current_user.id)
+        
+        if user_data:
+            return jsonify({'status': 'success', 'data': user_data})
+        else:
+            return jsonify({'status': 'error', 'message': 'No user data found'}), 404
+    except Exception as e:
+        logger.error(f"Error getting user data: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/get_product_analytics/<product_id>')
+@login_required
+def get_product_analytics(product_id):
+    """Get comprehensive product analytics from Firebase"""
+    try:
+        if not firebase_initialized:
+            return jsonify({'error': 'Firebase not initialized'}), 500
+        
+        firebase_service = get_firebase_service()
+        analytics = firebase_service.get_product_analytics(product_id)
+        
+        if analytics:
+            return jsonify({'status': 'success', 'analytics': analytics})
+        else:
+            return jsonify({'status': 'error', 'message': 'No analytics found for this product'}), 404
+    except Exception as e:
+        logger.error(f"Error getting product analytics: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/get_all_negotiations')
+@login_required
+def get_all_negotiations():
+    """Get all negotiations for the current user"""
+    try:
+        if not firebase_initialized:
+            return jsonify({'error': 'Firebase not initialized'}), 500
+        
+        firebase_service = get_firebase_service()
+        user_data = firebase_service.get_user_data(current_user.id)
+        
+        if user_data and 'negotiations' in user_data:
+            return jsonify({'status': 'success', 'negotiations': user_data['negotiations']})
+        else:
+            return jsonify({'status': 'success', 'negotiations': {}})
+    except Exception as e:
+        logger.error(f"Error getting negotiations: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/get_price_trends/<product_id>')
+@login_required
+def get_price_trends(product_id):
+    """Get detailed price trends for a product"""
+    try:
+        if not firebase_initialized:
+            return jsonify({'error': 'Firebase not initialized'}), 500
+        
+        firebase_service = get_firebase_service()
+        analytics = firebase_service.get_product_analytics(product_id)
+        
+        if analytics and 'price_history' in analytics:
+            price_history = analytics['price_history']
+            # Process price history for trends
+            trends = {
+                'total_updates': len(price_history) if price_history else 0,
+                'price_history': price_history,
+                'latest_price': None,
+                'price_changes': []
+            }
+            
+            if price_history:
+                # Sort by timestamp and get latest price
+                sorted_prices = sorted(price_history.values(), key=lambda x: x.get('timestamp', ''))
+                if sorted_prices:
+                    trends['latest_price'] = sorted_prices[-1].get('price')
+            
+            return jsonify({'status': 'success', 'trends': trends})
+        else:
+            return jsonify({'status': 'error', 'message': 'No price history found'}), 404
+    except Exception as e:
+        logger.error(f"Error getting price trends: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/static/<path:filename>')

@@ -1,4 +1,5 @@
-from flask import Flask, render_template, jsonify, request, send_from_directory
+from flask import Flask, render_template, jsonify, request, send_from_directory, redirect, url_for, flash
+from flask_login import login_required, current_user
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
@@ -9,6 +10,9 @@ from amazon_scraper import (
     get_product_details, save_price_data, analyze_prices, 
     get_product_id, save_product_data, load_product_data, start_continuous_scraping
 )
+from auth import init_auth, register_auth_routes, db, User
+from firebase_config import init_firebase, get_firebase_service
+from firebase_admin import firestore
 import logging
 
 # Set up logging
@@ -16,6 +20,16 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder='static')
+
+# Initialize authentication
+init_auth(app)
+
+# Initialize Firebase
+firebase_initialized = init_firebase()
+if firebase_initialized:
+    logger.info("Firebase initialized successfully")
+else:
+    logger.info("Firebase not configured - continuing without real-time features")
 
 # Global variables to store product data
 product_data = {}
@@ -109,6 +123,7 @@ def negotiate_price(product_id, offer):
     return {"response": "Let's discuss further!"}
 
 @app.route("/chat", methods=["POST"])
+@login_required
 def chat():
     try:
         data = request.json
@@ -127,10 +142,12 @@ def chat():
 # ----------------------------------------------------------------
 
 @app.route('/')
+@login_required
 def index():
-    return render_template('index.html', products=product_data)
+    return render_template('index.html', products=product_data, user=current_user)
 
 @app.route('/add_product', methods=['POST'])
+@login_required
 def add_product():
     try:
         data = request.get_json()
@@ -176,6 +193,11 @@ def add_product():
         # Save data to file
         save_data()
         
+        # Sync to Firebase if available
+        if firebase_initialized:
+            firebase_service = get_firebase_service()
+            firebase_service.save_product_data(product_id, product_data[product_id])
+        
         return jsonify({
             'status': 'success', 
             'message': 'Product added successfully',
@@ -190,6 +212,7 @@ def add_product():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/get_price_data/<product_id>')
+@login_required
 def get_price_data(product_id):
     try:
         if product_id not in product_data:
@@ -214,6 +237,7 @@ def get_price_data(product_id):
         return jsonify({'error': str(e)}), 500
 
 @app.route('/get_all_products')
+@login_required
 def get_all_products():
     try:
         products = []
@@ -230,6 +254,7 @@ def get_all_products():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/refresh_product/<product_id>', methods=['POST'])
+@login_required
 def refresh_product(product_id):
     try:
         if product_id not in product_data:
@@ -256,6 +281,11 @@ def refresh_product(product_id):
             'last_updated': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         })
         save_data()
+        
+        # Sync price update to Firebase
+        if firebase_initialized:
+            firebase_service = get_firebase_service()
+            firebase_service.save_price_update(product_id, {'price': current_price})
         return jsonify({'status': 'success', 'product': {
             'id': product_id,
             'name': product_name,
@@ -270,6 +300,7 @@ def refresh_product(product_id):
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/refresh_all_products', methods=['POST'])
+@login_required
 def refresh_all_products():
     try:
         updated_products = []
@@ -306,11 +337,63 @@ def refresh_all_products():
         logger.error(f"Error refreshing all products: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+@app.route('/realtime_updates')
+@login_required
+def realtime_updates():
+    """Get real-time updates from Firebase"""
+    try:
+        if not firebase_initialized:
+            return jsonify({'error': 'Firebase not initialized'}), 500
+        
+        firebase_service = get_firebase_service()
+        updates = []
+        
+        # Get recent price updates (last 10)
+        recent_updates = firebase_service.db.collection('price_history')\
+            .order_by('timestamp', direction=firestore.Query.DESCENDING)\
+            .limit(10)\
+            .stream()
+        
+        for update in recent_updates:
+            data = update.to_dict()
+            updates.append({
+                'product_id': data['product_id'],
+                'price': data['price'],
+                'timestamp': data['timestamp'].isoformat() if hasattr(data['timestamp'], 'isoformat') else str(data['timestamp'])
+            })
+        
+        return jsonify({'updates': updates})
+    except Exception as e:
+        logger.error(f"Error getting real-time updates: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/sync_to_firebase', methods=['POST'])
+@login_required
+def sync_to_firebase():
+    """Sync all local data to Firebase"""
+    try:
+        if not firebase_initialized:
+            return jsonify({'error': 'Firebase not initialized'}), 500
+        
+        firebase_service = get_firebase_service()
+        success = firebase_service.sync_local_data_to_firebase(product_data)
+        
+        if success:
+            return jsonify({'status': 'success', 'message': 'Data synced to Firebase successfully'})
+        else:
+            return jsonify({'status': 'error', 'message': 'Failed to sync data to Firebase'}), 500
+    except Exception as e:
+        logger.error(f"Error syncing to Firebase: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/static/<path:filename>')
 def serve_static(filename):
     return send_from_directory(app.static_folder, filename)
 
 if __name__ == '__main__':
+    # Register authentication routes
+    register_auth_routes(app)
+    
     # Ensure static directory exists
     if not os.path.exists('static'):
         os.makedirs('static')

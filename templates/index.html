@@ -78,8 +78,18 @@
         <div class="container">
             <a class="navbar-brand" href="#">
                 <i class="fas fa-chart-line me-2"></i>
-                Amazon Price Tracker
+                DealMaker AI
             </a>
+            <div class="navbar-nav ms-auto d-flex flex-row">
+                <span class="navbar-text me-3">
+                    <i class="fas fa-user me-1"></i>
+                    Welcome, {{ user.username }}!
+                </span>
+                <a class="nav-link" href="{{ url_for('logout') }}">
+                    <i class="fas fa-sign-out-alt me-1"></i>
+                    Logout
+                </a>
+            </div>
         </div>
     </nav>
 
@@ -109,6 +119,9 @@
                     </div>
                     <button id="refreshButton" class="btn btn-outline-primary w-100 mt-3">
                         <i class="fas fa-sync-alt me-2"></i>Refresh All Products
+                    </button>
+                    <button id="syncFirebaseButton" class="btn btn-outline-success w-100 mt-2">
+                        <i class="fas fa-cloud-upload-alt me-2"></i>Sync to Firebase
                     </button>
                 </div>
             </div>
@@ -169,6 +182,17 @@
                     <div class="dashboard-card">
                         <h5><i class="fas fa-chart-area me-2"></i>Price Trend Analysis</h5>
                         <img id="priceTrendImage" class="price-trend-image" src="" alt="Price Trend">
+                    </div>
+
+                    <!-- Real-time Updates -->
+                    <div class="dashboard-card">
+                        <h5><i class="fas fa-broadcast-tower me-2"></i>Real-time Updates</h5>
+                        <div id="realtimeUpdates" class="mt-3 p-3 bg-light rounded border" style="min-height:100px; max-height:200px; overflow-y: auto;">
+                            <div class="text-muted">Loading real-time updates...</div>
+                        </div>
+                        <button id="refreshRealtimeButton" class="btn btn-outline-info btn-sm mt-2">
+                            <i class="fas fa-sync-alt me-1"></i>Refresh Updates
+                        </button>
                     </div>
 
                     <!-- Price Negotiation Chat -->
@@ -353,9 +377,90 @@
             });
         });
 
+        // Real-time updates functionality
+        function loadRealtimeUpdates() {
+            fetch('/realtime_updates')
+                .then(response => response.json())
+                .then(data => {
+                    const updatesDiv = document.getElementById('realtimeUpdates');
+                    if (data.updates && data.updates.length > 0) {
+                        updatesDiv.innerHTML = '';
+                        data.updates.forEach(update => {
+                            const updateElement = document.createElement('div');
+                            updateElement.className = 'mb-2 p-2 border rounded';
+                            updateElement.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span><strong>Product ${update.product_id}</strong></span>
+                                    <span class="badge bg-primary">$${update.price}</span>
+                                </div>
+                                <small class="text-muted">${new Date(update.timestamp).toLocaleString()}</small>
+                            `;
+                            updatesDiv.appendChild(updateElement);
+                        });
+                    } else {
+                        updatesDiv.innerHTML = '<div class="text-muted">No recent updates available</div>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading real-time updates:', error);
+                    document.getElementById('realtimeUpdates').innerHTML = 
+                        '<div class="text-danger">Failed to load updates</div>';
+                });
+        }
+
+        // Sync to Firebase functionality
+        function syncToFirebase() {
+            const button = document.getElementById('syncFirebaseButton');
+            const originalText = button.innerHTML;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Syncing...';
+            button.disabled = true;
+
+            fetch('/sync_to_firebase', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showSuccessMessage('Data synced to Firebase successfully!');
+                } else {
+                    showError(data.message || 'Failed to sync to Firebase');
+                }
+            })
+            .catch(error => {
+                console.error('Error syncing to Firebase:', error);
+                showError('Failed to sync to Firebase');
+            })
+            .finally(() => {
+                button.innerHTML = originalText;
+                button.disabled = false;
+            });
+        }
+
+        function showSuccessMessage(message) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert alert-success alert-dismissible fade show';
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.querySelector('.container').insertBefore(alertDiv, document.querySelector('.row'));
+            setTimeout(() => alertDiv.remove(), 5000);
+        }
+
+        // Auto-refresh real-time updates every 30 seconds
+        setInterval(loadRealtimeUpdates, 30000);
+
         document.addEventListener('DOMContentLoaded', function() {
             initCharts();
             updateProductList();
+            loadRealtimeUpdates();
+            
+            // Add event listeners
+            document.getElementById('syncFirebaseButton').addEventListener('click', syncToFirebase);
+            document.getElementById('refreshRealtimeButton').addEventListener('click', loadRealtimeUpdates);
         });
     </script>
 </body>

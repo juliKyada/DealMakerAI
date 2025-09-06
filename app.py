@@ -98,7 +98,6 @@ def get_price_history(product_id):
         logger.error(f"Error getting price history: {e}")
         return {'dates': [], 'prices': []}
 
-# -------------------- NEW: NEGOTIATION LOGIC --------------------
 def negotiate_price(product_id, offer):
     if product_id not in product_data:
         return {"response": "❌ Sorry, product not found."}
@@ -139,7 +138,7 @@ def chat():
     except Exception as e:
         logger.error(f"Error in chat: {e}")
         return jsonify({"response": "⚠️ Something went wrong"}), 500
-# ----------------------------------------------------------------
+
 
 @app.route('/')
 @login_required

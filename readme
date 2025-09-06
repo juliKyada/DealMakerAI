@@ -1,1 +1,117 @@
+# DealMakerAI
 
+**DealMakerAI** is an AI-powered chatbot designed to negotiate prices and facilitate deals in an **e-commerce** or **B2B** context.  
+This project leverages **Natural Language Processing (NLP)** and **Machine Learning** models to simulate negotiation processes, providing a conversational and engaging user experience.
+
+---
+
+## 🚀 Key Features
+
+- **💰 Price Negotiation Engine**  
+  Intelligently adjusts offers based on user input and predefined negotiation strategies.
+
+- **🧠 Natural Language Understanding (NLU)**  
+  Understands user intents, recognizes key entities (like prices and product names), and responds contextually.
+
+- **📦 Dynamic Product Integration**  
+  Integrates with external data sources (e.g., `product_data.json` or a web scraper) to provide real-time product information.
+
+- **💬 Conversational Interface**  
+  User-friendly chat interface for seamless interaction.
+
+---
+
+## 📂 Project Structure
+
+```bash
+DealMakerAI/
+│
+├── app.py               # Main Flask application file
+├── amazon_scraper.py    # Script to scrape product data from Amazon
+├── product_data.json    # Example product data for negotiations
+├── requirements.txt     # Python dependencies
+│
+├── static/              # CSS, JavaScript, images for frontend
+│   ├── style.css
+│   └── script.js
+│
+└── templates/           # HTML templates (chat interface)
+    └── index.html
+⚙️ Getting Started
+✅ Prerequisites
+Python 3.x installed on your system
+
+🔧 Installation
+Clone the repository:
+
+bash
+Copy code
+git clone https://github.com/juliKyada/DealMakerAI.git
+cd DealMakerAI
+Create a virtual environment (recommended):
+
+bash
+Copy code
+python -m venv venv
+source venv/bin/activate     # On Windows: venv\Scripts\activate
+Install dependencies:
+
+bash
+Copy code
+pip install -r requirements.txt
+▶️ Usage
+Run the application:
+
+bash
+Copy code
+python app.py
+Open in your browser:
+
+cpp
+Copy code
+http://127.0.0.1:5000
+Start interacting with the DealMakerAI chatbot 🎉
+
+🤝 Contributing
+We welcome contributions! Follow these steps:
+
+Fork the repository
+
+Create a new branch
+
+bash
+Copy code
+git checkout -b feature/your-feature-name
+Make your changes
+
+Commit your changes
+
+bash
+Copy code
+git commit -m "Add new feature"
+Push to your branch
+
+bash
+Copy code
+git push origin feature/your-feature-name
+Open a Pull Request
+
+📜 License
+This project is licensed under the MIT License.
+See the LICENSE file for details.
+
+🌟 Future Improvements
+Multi-lingual negotiation support
+
+Integration with real-time e-commerce APIs
+
+Advanced reinforcement learning-based negotiation strategies
+
+Dashboard for deal analytics
+
+🙌 Acknowledgements
+Flask
+
+NLTK / spaCy
+
+BeautifulSoup for web scraping
